@@ -1,0 +1,30 @@
+{
+	"schemaVersion": 1,
+	"id": "minecart_speedway",
+	"version": "${version}",
+	"name": "Minecart Speedway",
+	"description": "Boosts eligible minecarts on powered rails placed over redstone blocks. Server-side only.",
+	"authors": [
+		"Caleb"
+	],
+	"contact": {
+		"sources": "https://github.com/calebneuf/minecart-speedway-fabric"
+	},
+	"license": "MIT",
+	"icon": "assets/minecart_speedway/icon.png",
+	"environment": "server",
+	"entrypoints": {
+		"main": [
+			"dev.minecartspeedway.MinecartSpeedway"
+		]
+	},
+	"mixins": [
+		"minecart_speedway.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~26.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

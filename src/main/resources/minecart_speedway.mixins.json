@@ -1,0 +1,15 @@
+{
+	"required": true,
+	"package": "dev.minecartspeedway.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"mixins": [
+		"NewMinecartBehaviorMixin",
+		"OldMinecartBehaviorMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"overwrites": {
+		"requireAnnotations": true
+	}
+}
