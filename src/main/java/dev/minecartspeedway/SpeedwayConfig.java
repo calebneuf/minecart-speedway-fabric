@@ -13,28 +13,50 @@ import java.nio.file.Path;
 public final class SpeedwayConfig {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 	private static final Path CONFIG_PATH = FabricLoader.getInstance().getConfigDir().resolve("minecart_speedway.json");
+	private static final long RELOAD_CHECK_INTERVAL_NANOS = 1_000_000_000L;
 
 	/** Vanilla minecart max speed in blocks per second. */
 	public static final double VANILLA_MAX_SPEED_BPS = 8.0;
 
 	private static double maxSpeedBlocksPerSecond = 32.0;
+	private static long lastModifiedMillis = Long.MIN_VALUE;
+	private static long lastReloadCheckNanos;
 
 	private SpeedwayConfig() {
 	}
 
 	public static void load() {
 		if (Files.exists(CONFIG_PATH)) {
-			try (Reader reader = Files.newBufferedReader(CONFIG_PATH)) {
-				Data data = GSON.fromJson(reader, Data.class);
-				if (data != null && data.maxSpeedBlocksPerSecond > 0) {
-					maxSpeedBlocksPerSecond = data.maxSpeedBlocksPerSecond;
-				}
-			} catch (IOException e) {
-				MinecartSpeedway.LOGGER.error("Failed to read config; using defaults", e);
-			}
+			readFromDisk();
 		} else {
 			save();
+			noteModifiedTime();
 		}
+	}
+
+	/**
+	 * Picks up edits to {@code config/minecart_speedway.json} without a restart.
+	 * Checked at most once a second.
+	 */
+	public static void reloadIfChanged() {
+		long now = System.nanoTime();
+		if (now - lastReloadCheckNanos < RELOAD_CHECK_INTERVAL_NANOS) {
+			return;
+		}
+		lastReloadCheckNanos = now;
+		try {
+			if (!Files.exists(CONFIG_PATH)) {
+				return;
+			}
+			long modified = Files.getLastModifiedTime(CONFIG_PATH).toMillis();
+			if (modified == lastModifiedMillis) {
+				return;
+			}
+		} catch (IOException e) {
+			MinecartSpeedway.LOGGER.error("Failed to check config timestamp", e);
+			return;
+		}
+		readFromDisk();
 	}
 
 	public static void save() {
@@ -49,20 +71,52 @@ public final class SpeedwayConfig {
 	}
 
 	public static double getMaxSpeedBlocksPerSecond() {
+		reloadIfChanged();
 		return maxSpeedBlocksPerSecond;
 	}
 
 	/** Max speed in blocks per tick (what Minecraft uses internally). */
 	public static double getMaxSpeedBlocksPerTick() {
-		return maxSpeedBlocksPerSecond / 20.0;
+		return getMaxSpeedBlocksPerSecond() / 20.0;
 	}
 
 	/**
-	 * Scales powered-rail acceleration so carts can reach the configured max
-	 * over a similar stretch of rail as vanilla uses for 8 b/s.
+	 * Scales powered-rail acceleration so a higher cap is reached on the same
+	 * stretch of rail vanilla uses to reach 8 blocks/s.
 	 */
-	public static double getAccelerationScale() {
-		return maxSpeedBlocksPerSecond / VANILLA_MAX_SPEED_BPS;
+	public static double getAccelerationScale(double effectiveBlocksPerSecond) {
+		return Math.max(effectiveBlocksPerSecond, VANILLA_MAX_SPEED_BPS) / VANILLA_MAX_SPEED_BPS;
+	}
+
+	private static void readFromDisk() {
+		double previous = maxSpeedBlocksPerSecond;
+		try (Reader reader = Files.newBufferedReader(CONFIG_PATH)) {
+			Data data = GSON.fromJson(reader, Data.class);
+			if (data != null && data.maxSpeedBlocksPerSecond > 0) {
+				maxSpeedBlocksPerSecond = data.maxSpeedBlocksPerSecond;
+			}
+			noteModifiedTime();
+			if (previous != maxSpeedBlocksPerSecond) {
+				MinecartSpeedway.LOGGER.info(
+						"Minecart Speedway max speed is {} blocks/s ({})",
+						maxSpeedBlocksPerSecond,
+						CONFIG_PATH.toAbsolutePath()
+				);
+			}
+		} catch (Exception e) {
+			MinecartSpeedway.LOGGER.error("Failed to read config; keeping {} blocks/s", maxSpeedBlocksPerSecond, e);
+			noteModifiedTime();
+		}
+	}
+
+	private static void noteModifiedTime() {
+		try {
+			if (Files.exists(CONFIG_PATH)) {
+				lastModifiedMillis = Files.getLastModifiedTime(CONFIG_PATH).toMillis();
+			}
+		} catch (IOException e) {
+			MinecartSpeedway.LOGGER.error("Failed to read config timestamp", e);
+		}
 	}
 
 	private record Data(double maxSpeedBlocksPerSecond) {
